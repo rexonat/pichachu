@@ -1,2 +1,5 @@
 requests
 python-dotenv
+google-auth==2.12.0
+google-auth-oauthlib==0.5.1
+google-api-python-client==2.67.0

@@ -73,7 +73,7 @@ def upload_file_to_gdrive(file_path):
 
     if service:
         try:
-            folder_id = '1jMO6rq2HfQr1zjiDZxaYI7ew4WPctFLX'  # Replace with your folder ID
+            folder_id = '1AdrR-SRK11GNxoAfs5cpr9NKSNgHf8I1'  # Replace with your folder ID
 
             file_metadata = {
                 'name': 'random_data.csv',  # File name in Google Drive

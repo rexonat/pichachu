@@ -1,15 +1,3 @@
-import os
-import json
-import csv
-import random
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
-from google.auth.transport.requests import Request
-
-# Google Drive API authentication
-SCOPES = ['https://www.googleapis.com/auth/drive.file']
-
 def authenticate_gdrive():
     """Authenticate using service account credentials stored in environment variable."""
     creds = None
@@ -34,7 +22,8 @@ def authenticate_gdrive():
         print(f"Failed to load credentials: {e}")
         return None
 
-    # Check if credentials are expired and refresh them
+    # Debug log to check initial credentials validity
+    print(f"Initial credentials valid: {creds.valid}")
     if creds and creds.expired and creds.refresh_token:
         try:
             creds.refresh(Request())  # Refresh the credentials
@@ -43,8 +32,11 @@ def authenticate_gdrive():
             print(f"Failed to refresh credentials: {e}")
             return None
     elif not creds.valid:
-        print("Credentials are invalid.")
+        print("Credentials are invalid.")  # Debugging log
         return None
+
+    # Debug log to check credentials after refresh
+    print(f"Credentials after refresh valid: {creds.valid}")
 
     # Return the authenticated service
     try:
@@ -55,50 +47,4 @@ def authenticate_gdrive():
         print(f"Error creating the Drive service: {e}")
         return None
 
-
-def create_random_csv(file_path="random_data.csv"):
-    """Create a random CSV file."""
-    print(f"Creating a random CSV file: {file_path}")
-    with open(file_path, mode="w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["ID", "Name", "Age", "Score"])  # Writing header
-        for i in range(1, 11):  # Creating 10 rows of random data
-            writer.writerow([i, f"Name_{i}", random.randint(18, 60), random.randint(50, 100)])
-    print(f"Random CSV file created: {file_path}")
-
-
-def upload_file_to_gdrive(file_path):
-    """Upload the file to Google Drive."""
-    service = authenticate_gdrive()
-
-    if service:
-        try:
-            folder_id = '1AdrR-SRK11GNxoAfs5cpr9NKSNgHf8I1'  # Replace with your folder ID
-
-            file_metadata = {
-                'name': 'random_data.csv',  # File name in Google Drive
-                'parents': [folder_id]  # Folder ID where the file should go
-            }
-
-            media = MediaFileUpload(file_path, mimetype='text/csv')
-            file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-
-            print(f"✅ File uploaded to Google Drive with ID: {file['id']} in folder {folder_id}")
-
-        except Exception as e:
-            print(f"Error uploading file to Google Drive: {e}")
-    else:
-        print("Google Drive authentication failed, unable to upload file.")
-
-
-if __name__ == "__main__":
-    try:
-        # Step 1: Create a random CSV file
-        create_random_csv()
-
-        # Step 2: Upload the random CSV file to Google Drive
-        upload_file_to_gdrive("random_data.csv")
-
-    except Exception as e:
-        print(f"An error occurred: {e}")
 

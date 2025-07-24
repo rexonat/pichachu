@@ -1,0 +1,8 @@
+services:
+  - type: cron
+    name: royalmail-order-fetcher
+    runtime: docker
+    plan: free
+    schedule: "0 7 * * *"  # daily at 7am UTC
+    dockerContext: .
+    dockerfilePath: Dockerfile

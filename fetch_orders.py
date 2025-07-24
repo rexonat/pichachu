@@ -1,12 +1,8 @@
 import os
 import json
-import csv
-import requests
-from google.auth.transport.requests import Request
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
-from datetime import datetime, timedelta
+from google.auth.transport.requests import Request
 
 # Google Drive API authentication
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
@@ -34,90 +30,42 @@ def authenticate_gdrive():
         print("GOOGLE_CREDENTIALS environment variable is missing.")
         return None
 
-    # If credentials are invalid, refresh them (though service accounts typically don't expire)
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            print("No valid credentials found.")
-            return None
+    # Check if the credentials are valid
+    if creds and creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+        print("Credentials refreshed.")  # Debugging log
+    elif not creds.valid:
+        print("Credentials are invalid or expired.")  # Debugging log
+        return None
 
-    return build('drive', 'v3', credentials=creds)
+    # Return the authenticated service
+    try:
+        drive_service = build('drive', 'v3', credentials=creds)
+        return drive_service
+    except Exception as e:
+        print(f"Error creating the Drive service: {e}")
+        return None
 
-def upload_file_to_gdrive(file_path):
-    """Upload the file to Google Drive."""
+def test_google_drive_service():
+    """Test the Google Drive service connection by listing files in the root directory."""
     service = authenticate_gdrive()
 
     if service:
-        # Specify the folder ID here (replace with your actual folder ID)
-        folder_id = '1jMO6rq2HfQr1zjiDZxaYI7ew4WPctFLX'  # Replace with the folder ID where you want to upload
-
-        file_metadata = {
-            'name': 'orders.csv',  # The file name on Google Drive
-            'parents': [folder_id]  # Specify the folder ID here
-        }
-
-        media = MediaFileUpload(file_path, mimetype='text/csv')
-        file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-        
-        print(f"✅ File uploaded to Google Drive with ID: {file['id']} in folder {folder_id}")
+        # List files in the Google Drive root folder to test the connection
+        try:
+            results = service.files().list(fields="files(id, name)").execute()
+            items = results.get('files', [])
+            if not items:
+                print("No files found in Google Drive.")
+            else:
+                print("Files in Google Drive:")
+                for item in items:
+                    print(f"{item['name']} (ID: {item['id']})")
+        except Exception as e:
+            print(f"Error listing files: {e}")
     else:
-        print("Google Drive authentication failed, unable to upload file.")
-
-def get_orders():
-    """Fetch orders from Royal Mail API."""
-    url = "https://api.parcel.royalmail.com/api/v1/orders"
-    headers = {
-        "Authorization": f"Bearer {os.getenv('API_KEY')}",
-        "Accept": "application/json",
-    }
-    params = {
-        "pageSize": 30,  # Adjust to get more or fewer orders
-        "startDateTime": (datetime.utcnow() - timedelta(days=30)).strftime('%Y-%m-%dT%H:%M:%S'),  # Last 30 days
-        "endDateTime": datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'),
-    }
-    
-    response = requests.get(url, headers=headers, params=params)
-
-    if response.status_code != 200:
-        print(f"❌ Error fetching data: {response.status_code}, {response.text}")
-        return []
-    
-    data = response.json()
-    orders = data.get("orders", [])
-    print(f"Fetched {len(orders)} orders.")
-    return orders
-
-def save_orders_to_csv(orders, path="orders.csv"):
-    """Save the fetched orders to a CSV file."""
-    with open(path, mode="w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["date", "customer", "package format", "shipping service", "tracking", "status"])
-        for order in orders:
-            writer.writerow([
-                order.get("orderDate", ""),
-                order.get("customerName", ""),
-                order.get("packageFormat", ""),
-                order.get("shippingServiceUsed", ""),
-                order.get("trackingNumber", ""),
-                order.get("status", "")
-            ])
-    print(f"✅ Saved {len(orders)} orders to: {path}")
+        print("Google Drive service is not available.")
 
 if __name__ == "__main__":
-    try:
-        # Step 1: Fetch orders from Royal Mail
-        orders = get_orders()
-
-        # Step 2: Save orders to CSV
-        if orders:
-            save_orders_to_csv(orders)
-
-            # Step 3: Upload the CSV file to Google Drive
-            upload_file_to_gdrive("orders.csv")
-        else:
-            print("No orders to process.")
-    except Exception as e:
-        print(f"An error occurred: {e}")
-
+    test_google_drive_service()
 

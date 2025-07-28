@@ -1,11 +1,12 @@
 import os
 import json
 import csv
-import random
+import requests
+from google.auth.transport.requests import Request
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-from google.auth.transport.requests import Request
+from datetime import datetime, timedelta
 
 # Google Drive API authentication
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
@@ -13,96 +14,103 @@ SCOPES = ['https://www.googleapis.com/auth/drive.file']
 def authenticate_gdrive():
     """Authenticate using service account credentials stored in environment variable."""
     creds = None
-    print("Starting Google Drive authentication...")
 
     # Retrieve the credentials from the environment variable
     google_credentials = os.getenv("GOOGLE_CREDENTIALS")
-    if not google_credentials:
-        print("GOOGLE_CREDENTIALS environment variable is missing.")
-        return None
 
-    try:
+    if google_credentials:
         # Parse the JSON string into a dictionary
         creds_dict = json.loads(google_credentials)
-        print("Successfully parsed credentials.")  # Debugging log
 
         # Create credentials object from the dictionary using the service account
         creds = service_account.Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-        print(f"Google Drive authentication successful for {creds_dict.get('client_email')}.")  # Debugging log
-
-    except Exception as e:
-        print(f"Failed to load credentials: {e}")
+        print("Google Drive authentication successful.")  # Debugging log
+    else:
+        print("No credentials found in environment variables.")
         return None
 
-    # Check if credentials are expired and refresh them
-    if creds and creds.expired and creds.refresh_token:
-        try:
-            creds.refresh(Request())  # Refresh the credentials
-            print("Credentials successfully refreshed.")  # Debugging log
-        except Exception as e:
-            print(f"Failed to refresh credentials: {e}")
+    # If credentials are invalid, refresh them (though service accounts typically don't expire)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            print("No valid credentials found.")
             return None
-    elif not creds.valid:
-        print("Credentials are invalid.")  # Debugging log
-        return None
 
-    # Return the authenticated service
-    try:
-        drive_service = build('drive', 'v3', credentials=creds)
-        print("Google Drive service created successfully.")  # Debugging log
-        return drive_service
-    except Exception as e:
-        print(f"Error creating the Drive service: {e}")
-        return None
-
-
-def create_random_csv(file_path="random_data.csv"):
-    """Create a random CSV file."""
-    print(f"Creating a random CSV file: {file_path}")
-    with open(file_path, mode="w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["ID", "Name", "Age", "Score"])  # Writing header
-        for i in range(1, 11):  # Creating 10 rows of random data
-            writer.writerow([i, f"Name_{i}", random.randint(18, 60), random.randint(50, 100)])
-    print(f"Random CSV file created: {file_path}")
-
+    return build('drive', 'v3', credentials=creds)
 
 def upload_file_to_gdrive(file_path):
     """Upload the file to Google Drive."""
     service = authenticate_gdrive()
 
     if service:
-        print("Attempting to upload the file to Google Drive...")  # Debugging log
-        try:
-            folder_id = '1AdrR-SRK11GNxoAfs5cpr9NKSNgHf8I1'  # Replace with your folder ID
+        # Specify the folder ID here (replace with your actual folder ID)
+        folder_id = '1jMO6rq2HfQr1zjiDZxaYI7ew4WPctFLX'  # Replace with the folder ID where you want to upload
 
-            file_metadata = {
-                'name': 'random_data.csv',  # File name in Google Drive
-                'parents': [folder_id]  # Folder ID where the file should go
-            }
+        file_metadata = {
+            'name': 'orders.csv',  # The file name on Google Drive
+            'parents': [folder_id]  # Specify the folder ID here
+        }
 
-            media = MediaFileUpload(file_path, mimetype='text/csv')
-            file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-
-            print(f"✅ File uploaded to Google Drive with ID: {file['id']} in folder {folder_id}")  # Debugging log
-
-        except Exception as e:
-            print(f"Error uploading file to Google Drive: {e}")
+        media = MediaFileUpload(file_path, mimetype='text/csv')
+        file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+        
+        print(f"✅ File uploaded to Google Drive with ID: {file['id']} in folder {folder_id}")
     else:
         print("Google Drive authentication failed, unable to upload file.")
 
+def get_orders():
+    """Fetch orders from Royal Mail API."""
+    url = "https://api.parcel.royalmail.com/api/v1/orders"
+    headers = {
+        "Authorization": f"Bearer {os.getenv('API_KEY')}",
+        "Accept": "application/json",
+    }
+    params = {
+        "pageSize": 30,  # Adjust to get more or fewer orders
+        "startDateTime": (datetime.utcnow() - timedelta(days=30)).strftime('%Y-%m-%dT%H:%M:%S'),  # Last 30 days
+        "endDateTime": datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'),
+    }
+    
+    response = requests.get(url, headers=headers, params=params)
+
+    if response.status_code != 200:
+        print(f"❌ Error fetching data: {response.status_code}, {response.text}")
+        return []
+    
+    data = response.json()
+    orders = data.get("orders", [])
+    print(f"Fetched {len(orders)} orders.")
+    return orders
+
+def save_orders_to_csv(orders, path="orders.csv"):
+    """Save the fetched orders to a CSV file."""
+    with open(path, mode="w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["date", "customer", "package format", "shipping service", "tracking", "status"])
+        for order in orders:
+            writer.writerow([
+                order.get("orderDate", ""),
+                order.get("customerName", ""),
+                order.get("packageFormat", ""),
+                order.get("shippingServiceUsed", ""),
+                order.get("trackingNumber", ""),
+                order.get("status", "")
+            ])
+    print(f"✅ Saved {len(orders)} orders to: {path}")
 
 if __name__ == "__main__":
-    print("Script is starting...")  # Debugging log
     try:
-        # Step 1: Create a random CSV file
-        create_random_csv()
+        # Step 1: Fetch orders from Royal Mail
+        orders = get_orders()
 
-        # Step 2: Upload the random CSV file to Google Drive
-        upload_file_to_gdrive("random_data.csv")
+        # Step 2: Save orders to CSV
+        if orders:
+            save_orders_to_csv(orders)
 
+            # Step 3: Upload the CSV file to Google Drive
+            upload_file_to_gdrive("orders.csv")
+        else:
+            print("No orders to process.")
     except Exception as e:
         print(f"An error occurred: {e}")
-
-
-
